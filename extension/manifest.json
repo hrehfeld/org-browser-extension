@@ -11,5 +11,5 @@
         "default_title": "Show tabs"      // optional; shown in tooltip
         //"default_popup": "popup.html"        // optional
     },
-	"permissions": ["storage", "activeTab", "tabs", "nativeMessaging", "bookmarks"]
+	"permissions": ["storage", "activeTab", "tabs", "nativeMessaging", "bookmarks", "windows"]
 }

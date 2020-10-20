@@ -4,9 +4,19 @@ const TYPE_TAB = 'tab';
 const TYPE_BOOKMARK = 'bookmark';
 const TYPE_KILL = 'kill';
 
+const browser = chrome;
+
+function tabs_highlight_compat(args) {
+	delete args.populate;
+	return args;
+}
+
+
 const T = chrome.tabs;
 const B = chrome.bookmarks;
+const W = browser.windows;
 const runtime = chrome.runtime;
+
 
 function promisify(f,	success) {
 	return new Promise(function(resolve) {
@@ -55,7 +65,10 @@ function tab_clean(tab) {
 
 function get_tabs() {
 	return promisify(success => T.query({}, success),
-									 tabs => tabs.map(tab_clean));
+									 tabs => {
+										 tabs.forEach(t => t.type = TYPE_TAB);
+										 return tabs;
+									 });
 }
 
 
@@ -68,8 +81,8 @@ function get_bookmarks() {
 	return promisify(success => B.search({}, success),
 									 function(bookmarks) {
 										 // ignore folders
-										 return bookmarks.filter(b => 'url' in b)
-											 .map(bookmark_clean);
+										 bookmarks.forEach(b => b.type = TYPE_BOOKMARK);
+										 return bookmarks.filter(b => 'url' in b);
 									 });
 }
 
@@ -84,17 +97,61 @@ async function get_all() {
 	return (await get_tabs()).concat(await get_bookmarks());
 }
 
+function item_clean(item) {
+	if (item.type === TYPE_TAB) {
+		return tab_clean(item);
+	}
+	else {
+		return bookmark_clean(item);
+	}
+}
+
+function item_clean_url(item) {
+	item.url = url_clean(item.url);
+	return item;
+}
+
+function tab_open(url, resolve) {
+	T.create({url: url}, tab => {
+		(function go() {
+			// tab doesn't update, so we need to requery
+			T.get(tab.id, tab => {
+				if (tab.status !== "complete") {
+					setTimeout(go, 50);
+				}
+				else {
+					resolve([tab]);
+				}
+			});
+		})();
+	});
+};
+
 
 const event_handlers = {
 	all: async function(msg, resolve) {
-		const all = await get_all();
+		const all = (await get_all()).map(item_clean);
 		resolve(all);
 	},
 	status: async function(msg, resolve) {
 		const url = msg.url;
 		console.log('status for ' + url);
-		const matches = (await get_all()).filter(by_url(url));
+		const matches = (await get_all()).map(item_clean).filter(by_url(url));
 		resolve(matches);
+	},
+	activate: async function(msg, resolve) {
+		const url = msg.url;
+		console.log('active ' + url);
+		let matches = (await get_tabs());
+		// retain internal tab info, but make urls compatible
+		matches = matches.map(item_clean_url).filter(by_url(url));
+		if (!matches.length) {
+			matches =	[await promisify(success => tab_open(url, success), tab => tab)];
+		}
+		const windowId = matches[0].windowId;
+		W.update(windowId, {focused: true});
+		T.highlight(tabs_highlight_compat({tabs: matches.map(item => item.index), populate: false, windowId: windowId}),
+								_ => resolve(matches.map(item_clean)));
 	},
 	log: async function(msg, resolve) {
 	},
@@ -104,27 +161,11 @@ const event_handlers = {
 		const title = msg.title;
 
 		const url_filter = by_url(url);
-		const matching_tabs = (await get_tabs()).filter(url_filter);
-		const matching_bookmarks = (await get_bookmarks()).filter(url_filter);
+		const matching_tabs = (await get_tabs()).map(tab_clean).filter(url_filter);
+		const matching_bookmarks = (await get_bookmarks()).map(bookmark_clean).filter(url_filter);
 		if (status === TYPE_TAB) {
-			const create = function() {
-				T.create({url: url}, tab => {
-					(function go() {
-						// tab doesn't update, so we need to requery
-						T.get(tab.id, tab => {
-							if (tab.status !== "complete") {
-								setTimeout(go, 50);
-							}
-							else {
-								resolve([tab]);
-							}
-						});
-					})();
-
-				});
-			};
 			if (!matching_tabs.length) {
-				create();
+				tab_open(url);
 			}
 			else {
 				resolve(matching_tabs);
