@@ -112,21 +112,29 @@ function item_clean_url(item) {
 	return item;
 }
 
-function tab_open(url, resolve) {
+function tab_open_(url, resolve) {
 	T.create({url: url}, tab => {
-		(function go() {
+		(function go(i) {
 			// tab doesn't update, so we need to requery
 			T.get(tab.id, tab => {
 				if (tab.status !== "complete") {
-					setTimeout(go, 50);
+					console.log('waiting for tab loading ' + i)
+					setTimeout(_ => go(i + 1), 100);
 				}
 				else {
-					resolve([tab]);
+					console.log('returning tab' + i);
+					console.log(tab);
+					// not cleaned, this is the internal function and callers might need internal info
+					resolve(tab);
 				}
 			});
-		})();
+		})(0);
 	});
 };
+
+function tab_open(url) {
+	return promisify(success => tab_open_(url, success), tab => tab);
+}
 
 
 const event_handlers = {
@@ -147,7 +155,7 @@ const event_handlers = {
 		// retain internal tab info, but make urls compatible
 		matches = matches.map(item_clean_url).filter(by_url(url));
 		if (!matches.length) {
-			matches =	[await promisify(success => tab_open(url, success), tab => tab)];
+			matches =	[await tab_open(url)];
 		}
 		const windowId = matches[0].windowId;
 		W.update(windowId, {focused: true});
@@ -166,7 +174,7 @@ const event_handlers = {
 		const matching_bookmarks = (await get_bookmarks()).map(bookmark_clean).filter(url_filter);
 		if (status === TYPE_TAB) {
 			if (!matching_tabs.length) {
-				tab_open(url);
+				resolve([await tab_open(url)].map(tab_clean));
 			}
 			else {
 				resolve(matching_tabs);
@@ -193,19 +201,20 @@ const event_handlers = {
 		}
 		else if (status === TYPE_KILL) {
 			console.log('maybe kill tab for ', url);
+			let ret = [];
 			if (matching_tabs.length) {
 				console.log('kill tab for ', url);
 				T.remove(matching_tabs.map(tab => tab.id));
-				resolve(matching_tabs);
+				ret = ret.concat(matching_tabs);
 			}
-			else if (matching_bookmarks.length) {
+			if (matching_bookmarks.length) {
+				console.log('kill bookmark for ', url);
 				matching_bookmarks.map(bookmark => bookmark.id).forEach(id => B.remove(id));
-				resolve(matching_bookmarks);
+				ret = ret.concat(matching_bookmarks);
 			}
-			else {
-				// dummy answer, because nothing found, i.e. same status as killed
-				resolve([{ url: url, type: TYPE_TAB }]);
-			}
+
+			ret.forEach(item => item.type = TYPE_KILL)
+			resolve(ret);
 		}
 		else {
 			console.log('Unknown status: ' + status);
