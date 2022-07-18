@@ -54,6 +54,7 @@ function url_clean(url) {
 		//url = chrome.tabs.executeScript(tab.id, { code: getUrlSuspended });
 		//T.sendMessage(tab.id, { action: 'requestInfo' }, {}, function(res) { console.log('res' + res); console.log(chrome.runtime.lastError); });
 	}
+	url = url.split("#")[0];
 	return url;
 }
 
