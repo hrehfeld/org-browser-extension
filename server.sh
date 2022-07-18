@@ -1,3 +1,4 @@
+#!/usr/bin/sh
 export FLASK_APP=server
 export FLASK_ENV=development
 # suppresses any startup messages
