@@ -1,7 +1,7 @@
 {
   "name": "de.haukerehfeld.chrome_tabs",
   "description": "Tab Sync Native Host",
-  "path": "/home/hrehfeld/projects/chrome-tabs/server.sh",
+  "path": "/home/hrehfeld/projects/chrome-tabs/server.py",
   "type": "stdio",
   "allowed_origins": [
     "chrome-extension://aoekgnmfckgeghelgdccfjcdinanjepn/"
